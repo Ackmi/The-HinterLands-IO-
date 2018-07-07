@@ -1,10 +1,14 @@
+import { Message } from './../../shared/Messages/Message';
+import { PlayerMessages } from './../../shared/Messages/PlayerMessages';
 import {Router, Request, Response } from "express";
 import * as express from "express";
 var path = require('path');
 import { Socket } from 'dgram';
 import * as sio from 'socket.io';
 import "../../shared/shared";
+import "../../shared/ServerEntities/Player";
 import {Shared} from "../../shared/shared";
+
 
 console.log("firing up express1");
 //var express = require('express');
@@ -31,6 +35,14 @@ app.get('/', function (req:Request, res:Response) {
   res.sendFile(dir_name + '/index.html');
 });
 
+function Emit(socket:sio.Socket, message:Message)
+{
+  socket.emit(message.GetMessageType(), message);
+}
+function Broadcast(socket:sio.Socket, message:Message)
+{
+  socket.broadcast.emit(message.GetMessageType(), message);
+}
 
 
 // app.use(express.static('public'))
@@ -43,33 +55,49 @@ io.on('connection', function (socket) //putting as a socket doesn't work- won't 
   console.log('a user connected with id: '+(socket as any).id);
   
   if(players.length>0)
-    socket.emit('AddOtherPlayers', players);
+    Emit(socket, new PlayerMessages.AddOtherPlayers(players));
     
-  let obj={
-    x:Math.random()*200,
-    y:Math.random()*200,
-    id:socket.id
-  };
-  players[socket.id]=obj;
+  let player:PlayerMessages.Player= new PlayerMessages.Player(Math.random()*200, Math.random()*200, socket.id);
+  players.push(player);
 
-  socket.emit('message', 'can you hear me?', 1, 2, 'abc');
-  socket.emit('message', 'can you hear me2');
+  console.log("Number of players: "+players.length);
+
+  // socket.emit('message', 'can you hear me?', 1, 2, 'abc');
+  // socket.emit('message', 'can you hear me2');
 
   // send the players object to the new player
-   socket.emit('AddSelf', players[socket.id]);
-// update all other players of the new player
- socket.broadcast.emit('AddNewPlayer', players[socket.id]);
+  Emit(socket, new PlayerMessages.SelfFromServer(<PlayerMessages.Player>GetPlayerByID(socket.id)));
+  //  socket.emit('SelfFromServer', players.get(socket.id));
+  // update all other players of the new player
+  Broadcast(socket, new PlayerMessages.AddNewPlayer(<PlayerMessages.Player>GetPlayerByID(socket.id)));
+  //socket.broadcast.emit('AddNewPlayer', players.get(socket.id));
 
   socket.on('disconnect', function () 
   {
     console.log('user disconnected');
     // remove this player from our players object
-    delete players[socket.id];
+    let pos:number = GetPlayerPosByID(socket.id);
+    console.log("removing player with id: "+socket.id+", found at pos: "+pos);
+    let player =players.splice(pos, 1);
+
+    // players.delete(socket.id);
     // emit a message to all players to remove this player
     io.emit('disconnect', socket.id);
+
+    console.log("Number of players: "+players.length);
   });
+  socket.on(PlayerMessages.Position.GetMessageType(),  (data:string)=>PositonRecieved(socket, JSON.parse(data)));
 
 });
+function PositonRecieved(socket:sio.Socket, data:JSON)
+{
+  // console.log("data: "+data+", data.x, y: "+data.x+", "+data.y);
+  let message:PlayerMessages.Position =new PlayerMessages.Position().SetJSONObj(data);
+  // console.log("pos recieved!");
+  console.log("pos: "+message.x+", "+message.y);
+  //so broadcast to everyone else
+  Broadcast(socket, message);
+}
  
 server.listen(8081, function () {
   console.log(`Listening 321 on ${server.address().port}`);
@@ -89,5 +117,29 @@ app.get('/BROWSER_REFRESH_URL', function(req, res) {
   res.send(process.env.BROWSER_REFRESH_URL);
 });
 
+
 //server variables
-let players:any = {};
+ let players:PlayerMessages.Player[] = new Array();
+ function GetPlayerByID(id:string)
+ {
+   let player:PlayerMessages.Player|null=null;
+   for(let i:number=0;i<players.length;i++)
+      if(players[i].id===id)
+      {
+        player=players[i];
+        break;
+      }
+      return player;
+ }
+ function GetPlayerPosByID(id:string)
+ {
+   let pos:number=-1;
+   for(let i:number=0;i<players.length;i++)
+      if(players[i].id===id)
+      {
+        pos=i;
+        break;
+      }
+      return pos;
+ }
+//let players:Map<string, PlayerMessages.Player> = new Map<string, PlayerMessages.Player>();//to have key be a string- using 'map' object type- like a dictionary //--cant send maps over socket IO, so just goign to use arrays instead

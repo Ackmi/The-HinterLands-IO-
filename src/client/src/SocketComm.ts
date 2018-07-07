@@ -1,5 +1,9 @@
+
+import { Message } from './../../shared/Messages/Message';
 import { Game, MyScene } from './game';
 import { Scene } from 'phaser';
+import {PlayerMessages} from "../../shared/Messages/PlayerMessages";
+import Player from '../../shared/Entities/Player';
 
 
 // import io from 'socket.io-client';
@@ -33,7 +37,7 @@ export default class SocketComm
     }
     Connected()
     {
-        console.log("connected!!1");
+        console.log("connected!!");
     }
     Received(data:any)
     {
@@ -49,26 +53,71 @@ export default class SocketComm
 
     SetupPlayerMessages()
     {
-        this.socket.on('AddSelf', (data:any)=>this.AddSelf(data)); 
-        this.socket.on('AddNewPlayer', this.AddNewPlayer);            
-        this.socket.on('AddOtherPlayers', this.AddOtherPlayers); 
+        console.log("SetupPlayerMessages: ");
+
+        this.socket.on(PlayerMessages.SelfFromServer.GetMessageType(), (data:any)=>this.SelfFromServer(new PlayerMessages.SelfFromServer().SetJSONObj(data))); 
+        this.socket.on(PlayerMessages.AddNewPlayer.GetMessageType(), (data:any)=>this.AddNewPlayer(new PlayerMessages.AddNewPlayer().SetJSONObj(data)));       
+        this.socket.on(PlayerMessages.AddOtherPlayers.GetMessageType(), (data:any)=>{console.log("data recived: "+JSON.stringify(data)); this.AddOtherPlayers(new PlayerMessages.AddOtherPlayers().SetJSONObj(data))}); 
+        this.socket.on(PlayerMessages.Position.GetMessageType(), (data:any)=>this.UpdateOtherPlayerPosition(new PlayerMessages.Position().SetJSONObj(data))); 
         // this.socket.on('disconnect', this.Disconnected);    
     }
 
     //player related messages
-    AddSelf(data:any)
+    SelfFromServer(data:PlayerMessages.SelfFromServer)
     {
-        console.log("AddSelf: "+JSON.stringify(data));
+        console.log("SelfFromServer recieved: "+JSON.stringify(data));
         this.scene.my_player.x=data.x;
         this.scene.my_player.y=data.y;
+        this.scene.my_player.id=data.id;
     }
-    AddNewPlayer(data:any)
+    AddNewPlayer(data:PlayerMessages.AddNewPlayer)
     {
         console.log("AddNewPlayer: "+data);
+
+        console.log("Adding new player: "+data);
+        let player_new:Player = new Player();
+        player_new.Preload(this.scene);
+        player_new.CreatePlayer(this.scene, this.scene.map.tile_size);
+        player_new.x=data.x;
+        player_new.y=data.y;
+        player_new.id=data.id;
+        this.scene.players.push(player_new);
     }
-    AddOtherPlayers(data:any)
+    AddOtherPlayers(data:PlayerMessages.AddOtherPlayers)
     {
-        console.log("AddOtherPlayers: "+data);
+        console.log("AddOtherPlayers: "+JSON.stringify(data.players));
+        //lets add them to the game
+        
+        for(let i:number=0;i<data.players.length;i++)
+        {
+            console.log("Adding new player: "+data.players[i]);
+            let player_new:Player = new Player();
+            player_new.Preload(this.scene);
+            player_new.CreatePlayer(this.scene, this.scene.map.tile_size);
+            player_new.x=data.players[i].x;
+            player_new.y=data.players[i].y;
+            player_new.id=data.players[i].id;
+            this.scene.players.push(player_new);
+        }
+        // data.players.forEach((value: PlayerMessages.Player, key: string) => {
+        //     console.log(key, value);
+        // });
+        //so now we need to create a new player
+    }
+    UpdateOtherPlayerPosition(data:PlayerMessages.Position)
+    {
+        console.log("UpdateOtherPlayerPosition: "+data);
+        //find the other player, and update their position
+        for(let i:number=0;i<this.scene.players.length;i++)
+            if(this.scene.players[i].id===data.id)
+            {
+                this.scene.players[i].x=data.x;
+                this.scene.players[i].y=data.y;
+            }
+    }
+    Emit(message_type:string, obj:Object)
+    {
+        this.socket.emit(message_type, obj);
     }
 
     

@@ -9,6 +9,7 @@ import * as Phaser from "phaser";
 export class Entity
 {
     sprite!:Phaser.GameObjects.Sprite;
+    id:string="not set";
 
     
     Entity()

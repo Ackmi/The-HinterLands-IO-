@@ -19,6 +19,7 @@ import SocketComm from './SocketComm';
 // import { Server } from 'socket.io';
 
 import Player from "../../shared/Entities/Player";
+import { PlayerMessages } from '../../shared/Messages/PlayerMessages';
 
 
 // const socket:any = io('http://localhost:8081');
@@ -32,16 +33,15 @@ export class MyScene extends Phaser.Scene
 {
   map:Map;
   my_player:Player;
+  cursors!:CursorKeys; //! tells typescript that we know it won't be null- that we'll assign a value to it later, and not to error out
+  public players:Player[];
 
-  // public guy!:Phaser.GameObjects.Sprite;
-  // guy2!:Phaser.GameObjects.Sprite;
-
-  cursors!:CursorKeys;
   constructor()
   {
     super({"key":"MyScene"});
     this.map = new Map(this);
     this.my_player= new Player();
+    this.players= new Array();
     
     console.log("MyScene: constructor!");
   }
@@ -52,23 +52,10 @@ export class MyScene extends Phaser.Scene
 //so all these functions are in a scene type object- not a game type object
   preload() 
   {
-    //console.log("Game: this in preload2 is: "+this.constructor);
     console.log("MyScene: preload");
      this.map.preload();
-    //this.load.image("grass", "assets/images/grass_tile.jpg");
-
     this.my_player.Preload(this);
-
-    //load the guy
-    // this.load.image("guy", "assets/images/guy.png");
-
-    // this.load.spritesheet('guy_anim', 'assets/images/character.png',  { frameWidth: 16, frameHeight: 32});
-    // this.load.spritesheet('guy_attack', 'assets/images/guy_attack_32x32.png',  { frameWidth: 32, frameHeight: 32});
-
-    
-
     console.log("MyScene: preload finished");
-    
   }
 
   create() 
@@ -76,70 +63,15 @@ export class MyScene extends Phaser.Scene
     
     console.log("MyScene: Create!");
     this.map.create();
-
-    //this.my_player = this.add.sprite(200, 200, 'guy').setOrigin(0,0);
-
     this.my_player.CreatePlayer(this, this.map.tile_size);
     console.log("Player created");
-
-
-    // this.my_player = this.add.sprite(250, 200, 'guy_anim');//.setOrigin(0,0);
-    // this.my_player.setDisplaySize(this.map.tile_size, this.map.tile_size*2);
-    // this.anims.create({
-    //   key: 'down',
-    //   frames: this.anims.generateFrameNumbers('guy_anim', { start: 0, end: 3 }),
-    //   frameRate: 10,
-    //   repeat: -1
-    //   });
-    // this.anims.create({
-    //   key: 'idle',
-    //   frames: this.anims.generateFrameNumbers('guy_anim', { start: 5, end: 7 }),
-    //   frameRate: 1,
-    //   repeat: -1
-    //   });
-    //   this.anims.create({
-    //     key: 'right',
-    //     frames: this.anims.generateFrameNumbers('guy_anim', { start: 17, end: 20 }),
-    //     frameRate: 10,
-    //     repeat: -1
-    //     });
-    //   this.anims.create({
-    //     key: 'up',
-    //     frames: this.anims.generateFrameNumbers('guy_anim', { start: 34, end: 37 }),
-    //     frameRate: 10,
-    //     repeat: -1
-    //     });
-    //   this.anims.create({
-    //     key: 'left',
-    //     frames: this.anims.generateFrameNumbers('guy_anim', { start: 51, end: 54 }),
-    //     frameRate: 10,
-    //     repeat: -1
-    //     });
-    //     this.anims.create({
-    //       key: 'attack_down',
-    //       frames: this.anims.generateFrameNumbers('guy_attack', { start: 0, end: 3 }),
-    //       frameRate: 10,
-    //       repeat: 0
-    //       });
-
 
     console.log("camera BEFORE going to follow player");
     this.cameras.main.setBounds(0,0, this.map.world_width_px, this.map.world_height_px);
     this.cameras.main.startFollow(this.my_player.sprite);
     console.log("camera going to follow player");
-    //this.cursors = this.input.keyboard.createCursorKeys();
-    // this.input.keyboard.on()
 
-    //this technically works, but would have to guess the strings
-    // this.input.keyboard.on('keydown_A', function (event:any) {
-    //   console.log('Hello from the A Key!');
-    // });
-          // interface io;
 
-    //  let socket = io("http://localhost:8081/");
-    
-    // socket = io();
-    // let socket:any = SocketIO();
     game.socket_comm.Connect(this);
   }
 
@@ -166,27 +98,31 @@ export class MyScene extends Phaser.Scene
     
       
   
-
+    let pos_changed:boolean=false;
     if (down.isDown) 
     {
       this.my_player.y+=speed;
       this.my_player.anims.play('down', true);
+      pos_changed=true;
     }
     else if (up.isDown) 
     {
       this.my_player.y-=speed;
       this.my_player.anims.play('up', true);
+      pos_changed=true;
     }
 
     if (left.isDown) 
     {
       this.my_player.x-=speed;
       this.my_player.anims.play('left', true);
+      pos_changed=true;
     }
     else if (right.isDown) 
     {
       this.my_player.x+=speed;
       this.my_player.anims.play('right', true);
+      pos_changed=true;
     }
     else if(!down.isDown&&!up.isDown&&!space.isDown&&this.my_player.anims.currentAnim!=null&&this.my_player.anims.currentAnim.key!=="attack_down")
     {
@@ -205,11 +141,15 @@ export class MyScene extends Phaser.Scene
     else if(this.my_player.y+this.my_player.height>this.map.world_height_px)
       this.my_player.y=this.map.world_height_px-this.my_player.height;
 
-
-    // if (this.cursors.down.isDown)
-    // {    
-    //     this.my_player.y-=speed;
-    // }
+      if(pos_changed)
+      {
+        //send position to server
+        let message:PlayerMessages.Position = new PlayerMessages.Position(this.my_player.x, this.my_player.y, this.my_player.id);
+        console.log("sending message type1: "+message.GetMessageType()+", content: "+message.GetJSONObj());
+      
+        game.socket_comm.Emit(message.GetMessageType(), message.GetJSONObj());
+        game.socket_comm.Emit("hi", {nothing:"here"});
+      }
   }
 }
 // let my_scene:MyScene = new MyScene();
