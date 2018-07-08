@@ -95,3 +95,7 @@ typings/
 
 # next.js build output
 .next
+
+#package.jsons in the main folder
+package_with_comments.json
+package-lock.json
